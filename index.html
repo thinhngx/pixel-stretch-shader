@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pixel Stretch</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>Pixel Stretch</h1>
+        <span class="tagline">pick a column, smear it across the frame</span>
+      </header>
+      <main>
+        <div class="stage" id="stage">
+          <canvas id="view" hidden></canvas>
+          <div class="drop-hint" id="dropHint">
+            <p><strong>Drop an image or video here</strong></p>
+            <p>png · jpg · webp · mp4 · webm</p>
+            <button type="button" id="browseBtn">Browse files…</button>
+          </div>
+        </div>
+        <aside class="controls">
+          <input type="file" id="fileInput" hidden />
+
+          <section class="control">
+            <label for="fileInput">Media</label>
+            <button type="button" id="uploadBtn">Upload media…</button>
+            <div class="meta" id="mediaInfo">No media loaded</div>
+          </section>
+
+          <section class="control">
+            <label for="pickX">Column <output id="pickXValue">0.500</output></label>
+            <input type="range" id="pickX" min="0" max="1" step="0.001" value="0.5" disabled />
+          </section>
+
+          <section class="control">
+            <label>Preview scale</label>
+            <div class="segmented" id="scaleGroup" role="radiogroup">
+              <label><input type="radio" name="scale" value="1" checked disabled /><span>1x</span></label>
+              <label><input type="radio" name="scale" value="2" disabled /><span>2x</span></label>
+              <label><input type="radio" name="scale" value="3" disabled /><span>3x</span></label>
+            </div>
+            <div class="meta" id="sizeInfo"></div>
+          </section>
+
+          <section class="control">
+            <label for="format">Export format</label>
+            <select id="format" disabled></select>
+            <button type="button" id="exportBtn" class="primary" disabled>Export</button>
+            <div class="progress" id="progress" hidden>
+              <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="meta" id="status"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

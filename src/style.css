@@ -1,0 +1,215 @@
+:root {
+  --bg: #101014;
+  --panel: #1a1a21;
+  --border: #2c2c36;
+  --text: #e8e8ee;
+  --muted: #8b8b99;
+  --accent: #7c6cff;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.tagline {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  min-width: 0;
+  background:
+    repeating-conic-gradient(#16161c 0% 25%, #101014 0% 50%) 0 0 / 24px 24px;
+}
+
+.stage.dragover {
+  outline: 2px dashed var(--accent);
+  outline-offset: -8px;
+}
+
+#view {
+  max-width: 100%;
+  max-height: 100%;
+  box-shadow: 0 8px 40px rgb(0 0 0 / 0.5);
+}
+
+.drop-hint {
+  text-align: center;
+  color: var(--muted);
+}
+
+.drop-hint p {
+  margin: 6px 0;
+}
+
+.controls {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 16px;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control > label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.control output {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 1em;
+  overflow-wrap: anywhere;
+}
+
+button,
+select {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #22222b;
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented label {
+  flex: 1;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented span {
+  display: block;
+  text-align: center;
+  padding: 7px 0;
+  font-size: 13px;
+  cursor: pointer;
+  background: #22222b;
+  user-select: none;
+}
+
+.segmented input:checked + span {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.segmented input:disabled + span {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.progress {
+  height: 6px;
+  border-radius: 3px;
+  background: #22222b;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
