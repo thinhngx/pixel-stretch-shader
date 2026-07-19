@@ -2,6 +2,7 @@ import { Renderer } from './renderer'
 import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './media'
 import { downloadBlob, exportStill, type StillFormat } from './export/stills'
 import { exportWebM } from './export/webm'
+import { exportMP4 } from './export/mp4'
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -67,6 +68,7 @@ const FORMATS: Record<Media['kind'], { value: string; label: string }[]> = {
     { value: 'webp', label: '.webp' },
   ],
   video: [
+    { value: 'mp4', label: '.mp4' },
     { value: 'webm', label: '.webm' },
     { value: 'png', label: '.png (current frame)' },
     { value: 'webp', label: '.webp (current frame)' },
@@ -199,6 +201,16 @@ async function onExport(): Promise<void> {
       let blob: Blob
       if (format === 'webm') {
         blob = await exportWebM(renderer, media.element, pickX, opts)
+      } else if (format === 'mp4') {
+        blob = await exportMP4(renderer, media.element, pickX, {
+          ...opts,
+          onEngine: (engine) =>
+            setStatus(
+              engine === 'webcodecs'
+                ? `Rendering .mp4 at ${fps} fps (WebCodecs)…`
+                : `Rendering .mp4 at ${fps} fps (ffmpeg.wasm fallback — slower)…`,
+            ),
+        })
       } else {
         throw new Error(`Unsupported format: ${format}`)
       }
