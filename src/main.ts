@@ -1,5 +1,5 @@
 import { Renderer } from './renderer'
-import { ACCEPT, loadMedia, releaseMedia, type Media } from './media'
+import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './media'
 import { downloadBlob, exportStill, type StillFormat } from './export/stills'
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -31,6 +31,8 @@ let media: Media | null = null
 let pickX = 0.5
 let scale = 1
 let exporting = false
+let fpsEstimator: FpsEstimator | null = null
+let rafId = 0
 
 function setStatus(message: string): void {
   statusEl.textContent = message
@@ -78,16 +80,36 @@ function renderFrame(): void {
   renderer.render(pickX)
 }
 
+// Realtime preview loop for video: re-upload the current frame each tick.
+function startPreviewLoop(video: HTMLVideoElement): void {
+  stopPreviewLoop()
+  const tick = (): void => {
+    rafId = requestAnimationFrame(tick)
+    if (exporting || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return
+    renderer.uploadFrame(video)
+    renderer.render(pickX)
+  }
+  rafId = requestAnimationFrame(tick)
+}
+
+function stopPreviewLoop(): void {
+  if (rafId) cancelAnimationFrame(rafId)
+  rafId = 0
+}
+
 async function onFile(file: File): Promise<void> {
   try {
     const next = await loadMedia(file)
-    if (next.kind === 'video') {
-      releaseMedia(next)
-      setStatus('Video input lands in a later phase — images only for now.')
-      return
-    }
     if (media) releaseMedia(media)
+    stopPreviewLoop()
+    fpsEstimator?.stop()
+    fpsEstimator = null
     media = next
+    if (next.kind === 'video') {
+      fpsEstimator = new FpsEstimator(next.element)
+      await next.element.play().catch(() => {})
+      startPreviewLoop(next.element)
+    }
     renderer.setSource(next.element, next.width, next.height)
     canvas.hidden = false
     dropHint.hidden = true

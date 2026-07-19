@@ -84,6 +84,11 @@ export class Renderer {
   setSource(source: TexImageSource, width: number, height: number): void {
     this.sourceWidth = width
     this.sourceHeight = height
+    // A video element with no decoded frame yet can't be uploaded; the
+    // playback loop uploads it as soon as data is available.
+    if (source instanceof HTMLVideoElement && source.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return
+    }
     this.uploadFrame(source)
   }
 
