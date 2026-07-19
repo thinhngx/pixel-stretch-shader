@@ -1,6 +1,7 @@
 import { Renderer } from './renderer'
 import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './media'
 import { downloadBlob, exportStill, type StillFormat } from './export/stills'
+import { exportWebM } from './export/webm'
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -21,6 +22,8 @@ const scaleGroup = $<HTMLDivElement>('scaleGroup')
 const sizeInfo = $<HTMLDivElement>('sizeInfo')
 const formatSelect = $<HTMLSelectElement>('format')
 const exportBtn = $<HTMLButtonElement>('exportBtn')
+const progress = $<HTMLDivElement>('progress')
+const progressBar = $<HTMLDivElement>('progressBar')
 const statusEl = $<HTMLDivElement>('status')
 
 fileInput.accept = ACCEPT
@@ -64,6 +67,7 @@ const FORMATS: Record<Media['kind'], { value: string; label: string }[]> = {
     { value: 'webp', label: '.webp' },
   ],
   video: [
+    { value: 'webm', label: '.webm' },
     { value: 'png', label: '.png (current frame)' },
     { value: 'webp', label: '.webp (current frame)' },
   ],
@@ -169,25 +173,46 @@ scaleGroup.addEventListener('change', () => {
 
 exportBtn.addEventListener('click', () => void onExport())
 
+function onProgress(fraction: number): void {
+  progressBar.style.width = `${Math.round(fraction * 100)}%`
+}
+
 async function onExport(): Promise<void> {
   if (!media || exporting) return
   exporting = true
   setControlsEnabled(false)
   const format = formatSelect.value
   const filename = `pixel-stretch-${Date.now()}.${format}`
+  const wasPlaying = media.kind === 'video' && !media.element.paused
   try {
     if (format === 'png' || format === 'webp') {
       renderFrame()
       const blob = await exportStill(renderer, format as StillFormat)
       downloadBlob(blob, filename)
       setStatus(`Exported ${filename}`)
+    } else if (media.kind === 'video') {
+      const fps = fpsEstimator?.fps ?? 30
+      progress.hidden = false
+      onProgress(0)
+      setStatus(`Rendering .${format} at ${fps} fps…`)
+      const opts = { fps, onProgress }
+      let blob: Blob
+      if (format === 'webm') {
+        blob = await exportWebM(renderer, media.element, pickX, opts)
+      } else {
+        throw new Error(`Unsupported format: ${format}`)
+      }
+      downloadBlob(blob, filename)
+      setStatus(`Exported ${filename} (${(blob.size / 1e6).toFixed(1)} MB)`)
     } else {
       throw new Error(`Unsupported format: ${format}`)
     }
   } catch (err) {
     setStatus(err instanceof Error ? err.message : String(err))
   } finally {
+    progress.hidden = true
     exporting = false
     setControlsEnabled(true)
+    if (media?.kind === 'video' && wasPlaying) void media.element.play().catch(() => {})
   }
 }
