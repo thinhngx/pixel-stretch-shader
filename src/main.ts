@@ -1,3 +1,5 @@
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
 import { Renderer, type StretchDirection } from './renderer'
 import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './media'
 import { downloadBlob, exportStill, type StillFormat } from './export/stills'
