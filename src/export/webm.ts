@@ -5,6 +5,12 @@ export interface VideoExportOptions {
   onProgress: (fraction: number) => void
 }
 
+/**
+ * Pick coordinate as a function of normalized output time t (0..1).
+ * v2 always passes a constant; v3 animates it (lerp(start, end, ease(t))).
+ */
+export type PickAt = (t: number) => number
+
 const MIME_CANDIDATES = [
   'video/webm;codecs=vp9',
   'video/webm;codecs=vp8',
@@ -23,7 +29,7 @@ const MIME_CANDIDATES = [
 export async function exportWebM(
   renderer: Renderer,
   video: HTMLVideoElement,
-  pickX: number,
+  pickAt: PickAt,
   { fps, onProgress }: VideoExportOptions,
 ): Promise<Blob> {
   const mimeType = MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m))
@@ -45,10 +51,12 @@ export async function exportWebM(
   video.loop = false
   video.pause()
 
+  const tNow = (): number => (video.duration ? Math.min(1, video.currentTime / video.duration) : 0)
+
   try {
     await seekTo(video, 0)
     renderer.uploadFrame(video)
-    renderer.render(pickX)
+    renderer.render(pickAt(0))
 
     const stopped = new Promise<void>((resolve, reject) => {
       recorder.onstop = () => resolve()
@@ -61,9 +69,9 @@ export async function exportWebM(
     await new Promise<void>((resolve, reject) => {
       const onFrame = (): void => {
         renderer.uploadFrame(video)
-        renderer.render(pickX)
+        renderer.render(pickAt(tNow()))
         track.requestFrame()
-        onProgress(video.duration ? video.currentTime / video.duration : 0)
+        onProgress(tNow())
         if (!video.ended) scheduleFrame()
       }
       const scheduleFrame = (): void => {
@@ -77,7 +85,7 @@ export async function exportWebM(
 
     // Capture the final frame, then stop.
     renderer.uploadFrame(video)
-    renderer.render(pickX)
+    renderer.render(pickAt(1))
     track.requestFrame()
     recorder.stop()
     await stopped

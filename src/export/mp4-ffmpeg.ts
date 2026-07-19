@@ -3,7 +3,7 @@ import { fetchFile } from '@ffmpeg/util'
 import coreURL from '@ffmpeg/core?url'
 import wasmURL from '@ffmpeg/core/wasm?url'
 import type { Renderer } from '../renderer'
-import { seekTo, type VideoExportOptions } from './webm'
+import { seekTo, type PickAt, type VideoExportOptions } from './webm'
 
 // Frame extraction is 0..N% of the progress bar, x264 encode the rest.
 const EXTRACT_SHARE = 0.7
@@ -17,7 +17,7 @@ const EXTRACT_SHARE = 0.7
 export async function exportMP4Ffmpeg(
   renderer: Renderer,
   video: HTMLVideoElement,
-  pickX: number,
+  pickAt: PickAt,
   { fps, onProgress }: VideoExportOptions,
 ): Promise<Blob> {
   const ffmpeg = new FFmpeg()
@@ -35,7 +35,7 @@ export async function exportMP4Ffmpeg(
     for (let i = 0; i < frameCount; i++) {
       await seekTo(video, Math.min(i / fps, Math.max(0, duration - 1e-3)))
       renderer.uploadFrame(video)
-      renderer.render(pickX)
+      renderer.render(pickAt(frameCount > 1 ? i / (frameCount - 1) : 0))
       const blob = await new Promise<Blob>((resolve, reject) => {
         renderer.canvas.toBlob(
           (b) => (b ? resolve(b) : reject(new Error('Frame encode failed.'))),

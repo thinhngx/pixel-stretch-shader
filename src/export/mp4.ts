@@ -1,6 +1,6 @@
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer'
 import type { Renderer } from '../renderer'
-import { estimateBitrate, seekTo, type VideoExportOptions } from './webm'
+import { estimateBitrate, seekTo, type PickAt, type VideoExportOptions } from './webm'
 
 // H.264 codec strings, preferred first (High -> Main -> Baseline profile,
 // generous levels first so large/high-fps renders fit).
@@ -26,18 +26,18 @@ const AVC_CANDIDATES = [
 export async function exportMP4(
   renderer: Renderer,
   video: HTMLVideoElement,
-  pickX: number,
+  pickAt: PickAt,
   options: VideoExportOptions & { onEngine?: (engine: 'webcodecs' | 'ffmpeg') => void },
 ): Promise<Blob> {
   const { width, height } = renderer.canvas
   const config = await probeAvcConfig(width, height, options.fps)
   if (config) {
     options.onEngine?.('webcodecs')
-    return exportMP4WebCodecs(renderer, video, pickX, options, config)
+    return exportMP4WebCodecs(renderer, video, pickAt, options, config)
   }
   options.onEngine?.('ffmpeg')
   const { exportMP4Ffmpeg } = await import('./mp4-ffmpeg')
-  return exportMP4Ffmpeg(renderer, video, pickX, options)
+  return exportMP4Ffmpeg(renderer, video, pickAt, options)
 }
 
 async function probeAvcConfig(
@@ -68,7 +68,7 @@ async function probeAvcConfig(
 async function exportMP4WebCodecs(
   renderer: Renderer,
   video: HTMLVideoElement,
-  pickX: number,
+  pickAt: PickAt,
   { fps, onProgress }: VideoExportOptions,
   config: VideoEncoderConfig,
 ): Promise<Blob> {
@@ -102,7 +102,7 @@ async function exportMP4WebCodecs(
       if (encoderError) throw encoderError
       await seekTo(video, Math.min(i / fps, Math.max(0, duration - 1e-3)))
       renderer.uploadFrame(video)
-      renderer.render(pickX)
+      renderer.render(pickAt(frameCount > 1 ? i / (frameCount - 1) : 0))
       const frame = new VideoFrame(renderer.canvas, {
         timestamp: i * frameMicros,
         duration: frameMicros,

@@ -224,11 +224,14 @@ async function onExport(): Promise<void> {
       onProgress(0)
       setStatus(`Rendering .${format} at ${fps} fps…`)
       const opts = { fps, onProgress }
+      // v2: constant pick over the whole clip. v3 swaps this callback for
+      // lerp(start, end, ease(t)) — see src/easing.ts.
+      const pickAt = (): number => pick
       let blob: Blob
       if (format === 'webm') {
-        blob = await exportWebM(renderer, media.element, pick, opts)
+        blob = await exportWebM(renderer, media.element, pickAt, opts)
       } else if (format === 'mp4') {
-        blob = await exportMP4(renderer, media.element, pick, {
+        blob = await exportMP4(renderer, media.element, pickAt, {
           ...opts,
           onEngine: (engine) =>
             setStatus(
