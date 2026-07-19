@@ -1,5 +1,6 @@
 import { Renderer } from './renderer'
 import { ACCEPT, loadMedia, releaseMedia, type Media } from './media'
+import { downloadBlob, exportStill, type StillFormat } from './export/stills'
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -16,6 +17,10 @@ const browseBtn = $<HTMLButtonElement>('browseBtn')
 const mediaInfo = $<HTMLDivElement>('mediaInfo')
 const pickXSlider = $<HTMLInputElement>('pickX')
 const pickXValue = $<HTMLOutputElement>('pickXValue')
+const scaleGroup = $<HTMLDivElement>('scaleGroup')
+const sizeInfo = $<HTMLDivElement>('sizeInfo')
+const formatSelect = $<HTMLSelectElement>('format')
+const exportBtn = $<HTMLButtonElement>('exportBtn')
 const statusEl = $<HTMLDivElement>('status')
 
 fileInput.accept = ACCEPT
@@ -24,9 +29,48 @@ const renderer = new Renderer(canvas)
 
 let media: Media | null = null
 let pickX = 0.5
+let scale = 1
+let exporting = false
 
 function setStatus(message: string): void {
   statusEl.textContent = message
+}
+
+function scaleInputs(): HTMLInputElement[] {
+  return [...scaleGroup.querySelectorAll<HTMLInputElement>('input[name="scale"]')]
+}
+
+function setControlsEnabled(enabled: boolean): void {
+  pickXSlider.disabled = !enabled
+  formatSelect.disabled = !enabled
+  exportBtn.disabled = !enabled
+  uploadBtn.disabled = !enabled && exporting
+  for (const input of scaleInputs()) input.disabled = !enabled
+}
+
+function applyScale(): void {
+  if (!renderer.hasSource || !media) return
+  const size = renderer.setScale(scale)
+  sizeInfo.textContent =
+    `${size.width}×${size.height}` + (size.clamped ? ' (clamped to GPU limit)' : '')
+  renderFrame()
+}
+
+const FORMATS: Record<Media['kind'], { value: string; label: string }[]> = {
+  image: [
+    { value: 'png', label: '.png' },
+    { value: 'webp', label: '.webp' },
+  ],
+  video: [
+    { value: 'png', label: '.png (current frame)' },
+    { value: 'webp', label: '.webp (current frame)' },
+  ],
+}
+
+function populateFormats(kind: Media['kind']): void {
+  formatSelect.replaceChildren(
+    ...FORMATS[kind].map(({ value, label }) => new Option(label, value)),
+  )
 }
 
 function renderFrame(): void {
@@ -45,13 +89,13 @@ async function onFile(file: File): Promise<void> {
     if (media) releaseMedia(media)
     media = next
     renderer.setSource(next.element, next.width, next.height)
-    renderer.setScale(1)
     canvas.hidden = false
     dropHint.hidden = true
-    pickXSlider.disabled = false
     mediaInfo.textContent = `${file.name} — ${next.width}×${next.height}`
+    populateFormats(next.kind)
+    setControlsEnabled(true)
     setStatus('')
-    renderFrame()
+    applyScale()
   } catch (err) {
     setStatus(err instanceof Error ? err.message : String(err))
   }
@@ -88,3 +132,40 @@ pickXSlider.addEventListener('input', () => {
   pickXValue.textContent = pickX.toFixed(3)
   renderFrame()
 })
+
+// --- preview scale ---------------------------------------------------------
+
+scaleGroup.addEventListener('change', () => {
+  const checked = scaleInputs().find((input) => input.checked)
+  if (!checked) return
+  scale = Number(checked.value)
+  applyScale()
+})
+
+// --- export ----------------------------------------------------------------
+// Export always follows the current preview settings: pickX + scale + format.
+
+exportBtn.addEventListener('click', () => void onExport())
+
+async function onExport(): Promise<void> {
+  if (!media || exporting) return
+  exporting = true
+  setControlsEnabled(false)
+  const format = formatSelect.value
+  const filename = `pixel-stretch-${Date.now()}.${format}`
+  try {
+    if (format === 'png' || format === 'webp') {
+      renderFrame()
+      const blob = await exportStill(renderer, format as StillFormat)
+      downloadBlob(blob, filename)
+      setStatus(`Exported ${filename}`)
+    } else {
+      throw new Error(`Unsupported format: ${format}`)
+    }
+  } catch (err) {
+    setStatus(err instanceof Error ? err.message : String(err))
+  } finally {
+    exporting = false
+    setControlsEnabled(true)
+  }
+}
