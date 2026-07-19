@@ -3,6 +3,7 @@ import '@fontsource-variable/geist-mono'
 import { Renderer, type StretchDirection } from './renderer'
 import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './media'
 import { exportStill, type StillFormat } from './export/stills'
+import { EASINGS, lerp, type EasingName } from './easing'
 import { chooseDestination, saveToDestination, SAVE_TYPES } from './export/save'
 import { exportWebM } from './export/webm'
 import { exportMP4 } from './export/mp4'
@@ -21,10 +22,25 @@ const uploadBtn = $<HTMLButtonElement>('uploadBtn')
 const browseBtn = $<HTMLButtonElement>('browseBtn')
 const mediaInfo = $<HTMLDivElement>('mediaInfo')
 const directionGroup = $<HTMLDivElement>('directionGroup')
+const pickControl = $<HTMLElement>('pickControl')
 const pickSlider = $<HTMLInputElement>('pick')
 const pickLabel = $<HTMLSpanElement>('pickLabel')
 const pickValueOut = $<HTMLOutputElement>('pickValue')
 const resetPickBtn = $<HTMLButtonElement>('resetPick')
+const animateControl = $<HTMLElement>('animateControl')
+const animateGroup = $<HTMLDivElement>('animateGroup')
+const animatePanel = $<HTMLDivElement>('animatePanel')
+const animStartSlider = $<HTMLInputElement>('animStart')
+const animStartLabel = $<HTMLSpanElement>('animStartLabel')
+const animStartValue = $<HTMLOutputElement>('animStartValue')
+const animEndSlider = $<HTMLInputElement>('animEnd')
+const animEndLabel = $<HTMLSpanElement>('animEndLabel')
+const animEndValue = $<HTMLOutputElement>('animEndValue')
+const animDurationSlider = $<HTMLInputElement>('animDuration')
+const animDurationValue = $<HTMLOutputElement>('animDurationValue')
+const animEasingSelect = $<HTMLSelectElement>('animEasing')
+const animPlayPauseBtn = $<HTMLButtonElement>('animPlayPause')
+const resetAnimBtn = $<HTMLButtonElement>('resetAnim')
 const scaleGroup = $<HTMLDivElement>('scaleGroup')
 const sizeInfo = $<HTMLDivElement>('sizeInfo')
 const formatSelect = $<HTMLSelectElement>('format')
@@ -48,6 +64,16 @@ let exporting = false
 let fpsEstimator: FpsEstimator | null = null
 let rafId = 0
 
+// Animate mode (image input only; OFF by default — v2 behavior when off).
+let animate = false
+let animStart = 0
+let animEnd = 1
+let animDuration = 2 // seconds
+let animEasing: EasingName = 'ease-in-out'
+let animPlaying = false
+let animRafId = 0
+let animT = 0 // current normalized position in the sweep, survives pause
+
 function setStatus(message: string): void {
   statusEl.textContent = message
 }
@@ -59,13 +85,22 @@ function radioInputs(group: HTMLElement, name: string): HTMLInputElement[] {
 const scaleInputs = (): HTMLInputElement[] => radioInputs(scaleGroup, 'scale')
 const directionInputs = (): HTMLInputElement[] => radioInputs(directionGroup, 'direction')
 
+const animateInputs = (): HTMLInputElement[] => radioInputs(animateGroup, 'animate')
+
 function setControlsEnabled(enabled: boolean): void {
   pickSlider.disabled = !enabled
   resetPickBtn.disabled = !enabled
   formatSelect.disabled = !enabled
   exportBtn.disabled = !enabled
   uploadBtn.disabled = !enabled && exporting
-  for (const input of [...scaleInputs(), ...directionInputs()]) input.disabled = !enabled
+  animStartSlider.disabled = !enabled
+  animEndSlider.disabled = !enabled
+  animDurationSlider.disabled = !enabled
+  animEasingSelect.disabled = !enabled
+  animPlayPauseBtn.disabled = !enabled
+  resetAnimBtn.disabled = !enabled
+  const radios = [...scaleInputs(), ...directionInputs(), ...animateInputs()]
+  for (const input of radios) input.disabled = !enabled
 }
 
 function applyScale(): void {
@@ -90,14 +125,61 @@ const FORMATS: Record<Media['kind'], { value: string; label: string }[]> = {
 }
 
 function populateFormats(kind: Media['kind']): void {
-  formatSelect.replaceChildren(
-    ...FORMATS[kind].map(({ value, label }) => new Option(label, value)),
-  )
+  const list =
+    kind === 'image' && animate
+      ? [
+          { value: 'mp4', label: '.mp4' },
+          { value: 'webm', label: '.webm' },
+          { value: 'png', label: '.png (current frame)' },
+          { value: 'webp', label: '.webp (current frame)' },
+        ]
+      : FORMATS[kind]
+  formatSelect.replaceChildren(...list.map(({ value, label }) => new Option(label, value)))
 }
+
+const animPickAt = (t: number): number => lerp(animStart, animEnd, EASINGS[animEasing](t))
 
 function renderFrame(): void {
   if (!renderer.hasSource) return
-  renderer.render(pick)
+  renderer.render(animate ? animPickAt(animT) : pick)
+}
+
+// --- animate preview loop (image input) -------------------------------------
+
+function animTick(now: number, anchor: number): void {
+  animRafId = requestAnimationFrame((n) => animTick(n, anchor))
+  if (exporting) return
+  const durMs = animDuration * 1000
+  animT = ((now - anchor) % durMs) / durMs
+  renderFrame()
+}
+
+function playAnim(): void {
+  if (animPlaying) return
+  animPlaying = true
+  animPlayPauseBtn.textContent = 'Pause'
+  const anchor = performance.now() - animT * animDuration * 1000
+  animRafId = requestAnimationFrame((n) => animTick(n, anchor))
+}
+
+function pauseAnim(): void {
+  animPlaying = false
+  animPlayPauseBtn.textContent = 'Play'
+  cancelAnimationFrame(animRafId)
+}
+
+function setAnimate(on: boolean): void {
+  animate = on
+  animatePanel.hidden = !on
+  pickControl.hidden = on
+  if (media) populateFormats(media.kind)
+  if (on) {
+    animT = 0
+    playAnim()
+  } else {
+    pauseAnim()
+    renderFrame()
+  }
 }
 
 // Realtime preview loop for video: re-upload the current frame each tick.
@@ -125,6 +207,10 @@ async function onFile(file: File): Promise<void> {
     fpsEstimator?.stop()
     fpsEstimator = null
     media = next
+    // Animate is only offered for image input, and always starts OFF.
+    if (animate) setAnimate(false)
+    for (const input of animateInputs()) input.checked = input.value === 'off'
+    animateControl.hidden = next.kind !== 'image'
     if (next.kind === 'video') {
       fpsEstimator = new FpsEstimator(next.element)
       await next.element.play().catch(() => {})
@@ -174,7 +260,10 @@ directionGroup.addEventListener('change', () => {
   const checked = directionInputs().find((input) => input.checked)
   if (!checked) return
   direction = checked.value as StretchDirection
-  pickLabel.textContent = direction === 'vertical' ? 'Row' : 'Column'
+  const axis = direction === 'vertical' ? 'Row' : 'Column'
+  pickLabel.textContent = axis
+  animStartLabel.textContent = `Start ${axis.toLowerCase()}`
+  animEndLabel.textContent = `End ${axis.toLowerCase()}`
   renderer.setDirection(direction)
   renderFrame()
 })
@@ -191,6 +280,48 @@ function setPick(value: number): void {
 pickSlider.addEventListener('input', () => setPick(pickSlider.valueAsNumber))
 
 resetPickBtn.addEventListener('click', () => setPick(DEFAULT_PICK))
+
+// --- animate controls --------------------------------------------------------
+
+animateGroup.addEventListener('change', () => {
+  const checked = animateInputs().find((input) => input.checked)
+  if (checked) setAnimate(checked.value === 'on')
+})
+
+function setAnimRange(start: number, end: number): void {
+  animStart = Math.min(1, Math.max(0, start))
+  animEnd = Math.min(1, Math.max(0, end))
+  animStartSlider.value = String(animStart)
+  animEndSlider.value = String(animEnd)
+  animStartValue.textContent = animStart.toFixed(3)
+  animEndValue.textContent = animEnd.toFixed(3)
+  renderFrame()
+}
+
+animStartSlider.addEventListener('input', () => setAnimRange(animStartSlider.valueAsNumber, animEnd))
+animEndSlider.addEventListener('input', () => setAnimRange(animStart, animEndSlider.valueAsNumber))
+
+resetAnimBtn.addEventListener('click', () => setAnimRange(0, 1))
+
+animDurationSlider.addEventListener('input', () => {
+  animDuration = animDurationSlider.valueAsNumber
+  animDurationValue.textContent = `${animDuration.toFixed(2).replace(/0$/, '')}s`
+  if (animPlaying) {
+    // re-anchor so the loop keeps its current phase under the new duration
+    pauseAnim()
+    playAnim()
+  }
+})
+
+animEasingSelect.addEventListener('change', () => {
+  animEasing = animEasingSelect.value as EasingName
+  renderFrame()
+})
+
+animPlayPauseBtn.addEventListener('click', () => {
+  if (animPlaying) pauseAnim()
+  else playAnim()
+})
 
 // --- preview scale ---------------------------------------------------------
 
