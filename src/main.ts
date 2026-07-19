@@ -2,7 +2,8 @@ import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
 import { Renderer, type StretchDirection } from './renderer'
 import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './media'
-import { downloadBlob, exportStill, type StillFormat } from './export/stills'
+import { exportStill, type StillFormat } from './export/stills'
+import { chooseDestination, saveToDestination, SAVE_TYPES } from './export/save'
 import { exportWebM } from './export/webm'
 import { exportMP4 } from './export/mp4'
 
@@ -39,6 +40,7 @@ const renderer = new Renderer(canvas)
 const DEFAULT_PICK = 0.5
 
 let media: Media | null = null
+let sourceBaseName = 'pixel-stretch'
 let direction: StretchDirection = 'horizontal'
 let pick = DEFAULT_PICK
 let scale = 1
@@ -131,6 +133,7 @@ async function onFile(file: File): Promise<void> {
     renderer.setSource(next.element, next.width, next.height)
     canvas.hidden = false
     dropHint.hidden = true
+    sourceBaseName = (file.name.replace(/\.[^.]+$/, '') || 'pixel-stretch').slice(0, 80)
     mediaInfo.textContent = `${file.name} — ${next.width}×${next.height}`
     populateFormats(next.kind)
     setControlsEnabled(true)
@@ -209,17 +212,26 @@ function onProgress(fraction: number): void {
 
 async function onExport(): Promise<void> {
   if (!media || exporting) return
+  const format = formatSelect.value
+
+  // Choose the destination first, while transient user activation from the
+  // Export click is still valid (it expires during long video encodes).
+  // A dismissed picker aborts silently — no error, no partial file.
+  const destination = await chooseDestination(
+    `${sourceBaseName}-stretch.${format}`,
+    SAVE_TYPES[format],
+  )
+  if (!destination) return
+
   exporting = true
   setControlsEnabled(false)
-  const format = formatSelect.value
-  const filename = `pixel-stretch-${Date.now()}.${format}`
   const wasPlaying = media.kind === 'video' && !media.element.paused
   try {
     if (format === 'png' || format === 'webp') {
       renderFrame()
       const blob = await exportStill(renderer, format as StillFormat)
-      downloadBlob(blob, filename)
-      setStatus(`Exported ${filename}`)
+      await saveToDestination(destination, blob)
+      setStatus(`Saved ${destination.filename}`)
     } else if (media.kind === 'video') {
       const fps = fpsEstimator?.fps ?? 30
       progress.hidden = false
@@ -245,8 +257,8 @@ async function onExport(): Promise<void> {
       } else {
         throw new Error(`Unsupported format: ${format}`)
       }
-      downloadBlob(blob, filename)
-      setStatus(`Exported ${filename} (${(blob.size / 1e6).toFixed(1)} MB)`)
+      await saveToDestination(destination, blob)
+      setStatus(`Saved ${destination.filename} (${(blob.size / 1e6).toFixed(1)} MB)`)
     } else {
       throw new Error(`Unsupported format: ${format}`)
     }
