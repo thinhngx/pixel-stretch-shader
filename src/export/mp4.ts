@@ -15,29 +15,92 @@ const AVC_CANDIDATES = [
   'avc1.42001f', // Baseline 3.1
 ]
 
+export type MP4Engine = 'webcodecs' | 'ffmpeg'
+
 /**
- * Export the effect over the full video as .mp4 (H.264).
- *
- * Primary path: WebCodecs VideoEncoder + mp4-muxer, driven offline
+ * A deterministic offline frame walk: renderFrame(i) must leave frame i on
+ * the renderer's canvas. Both MP4 engines (WebCodecs and ffmpeg.wasm) encode
+ * whatever the loop renders — video seeking and image animation are just
+ * different renderFrame implementations.
+ */
+export interface FrameLoop {
+  fps: number
+  frameCount: number
+  renderFrame: (i: number) => Promise<void> | void
+  onProgress: (fraction: number) => void
+}
+
+/**
+ * Export the effect over a full source video as .mp4 (H.264), driven offline
  * frame-by-frame via seeking — deterministic timing and exact render-target
- * scale, independent of playback speed. Falls back to ffmpeg.wasm (lazily
- * loaded) when WebCodecs or an AVC encoder isn't available.
+ * scale. WebCodecs VideoEncoder + mp4-muxer when available, ffmpeg.wasm
+ * (lazily loaded) otherwise.
  */
 export async function exportMP4(
   renderer: Renderer,
   video: HTMLVideoElement,
   pickAt: PickAt,
-  options: VideoExportOptions & { onEngine?: (engine: 'webcodecs' | 'ffmpeg') => void },
+  options: VideoExportOptions & { onEngine?: (engine: MP4Engine) => void },
+): Promise<Blob> {
+  const { fps } = options
+  const duration = video.duration
+  const frameCount = Math.max(1, Math.round(duration * fps))
+  const wasLooping = video.loop
+  video.loop = false
+  video.pause()
+  try {
+    return await encodeMP4(renderer, options.onEngine, {
+      fps,
+      frameCount,
+      onProgress: options.onProgress,
+      renderFrame: async (i) => {
+        await seekTo(video, Math.min(i / fps, Math.max(0, duration - 1e-3)))
+        renderer.uploadFrame(video)
+        renderer.render(pickAt(frameCount > 1 ? i / (frameCount - 1) : 0))
+      },
+    })
+  } finally {
+    video.loop = wasLooping
+  }
+}
+
+/**
+ * Export an animated pick sweep over a STILL image as .mp4: frameCount
+ * frames of pick = pickAt(t), t = i/(frameCount-1). No seeking, no frame
+ * uploads — the source texture never changes, only u_pick.
+ */
+export async function exportAnimationMP4(
+  renderer: Renderer,
+  pickAt: PickAt,
+  options: VideoExportOptions & {
+    durationSec: number
+    onEngine?: (engine: MP4Engine) => void
+  },
+): Promise<Blob> {
+  const { fps, durationSec, onProgress } = options
+  const frameCount = Math.max(2, Math.round(durationSec * fps))
+  return encodeMP4(renderer, options.onEngine, {
+    fps,
+    frameCount,
+    onProgress,
+    renderFrame: (i) => renderer.render(pickAt(i / (frameCount - 1))),
+  })
+}
+
+async function encodeMP4(
+  renderer: Renderer,
+  onEngine: ((engine: MP4Engine) => void) | undefined,
+  loop: FrameLoop,
 ): Promise<Blob> {
   const { width, height } = renderer.canvas
-  const config = await probeAvcConfig(width, height, options.fps)
+  const config = await probeAvcConfig(width, height, loop.fps)
   if (config) {
-    options.onEngine?.('webcodecs')
-    return exportMP4WebCodecs(renderer, video, pickAt, options, config)
+    onEngine?.('webcodecs')
+    return encodeMP4WebCodecs(renderer, loop, config)
   }
-  options.onEngine?.('ffmpeg')
-  const { exportMP4Ffmpeg } = await import('./mp4-ffmpeg')
-  return exportMP4Ffmpeg(renderer, video, pickAt, options)
+  onEngine?.('ffmpeg')
+  const { encodeMP4Ffmpeg } = await import('./mp4-ffmpeg')
+  return encodeMP4Ffmpeg(renderer, loop)
 }
 
 async function probeAvcConfig(
@@ -65,11 +128,9 @@ async function probeAvcConfig(
   return null
 }
 
-async function exportMP4WebCodecs(
+async function encodeMP4WebCodecs(
   renderer: Renderer,
-  video: HTMLVideoElement,
-  pickAt: PickAt,
-  { fps, onProgress }: VideoExportOptions,
+  { fps, frameCount, renderFrame, onProgress }: FrameLoop,
   config: VideoEncoderConfig,
 ): Promise<Blob> {
   const { width, height } = renderer.canvas
@@ -88,21 +149,13 @@ async function exportMP4WebCodecs(
   })
   encoder.configure(config)
 
-  const wasLooping = video.loop
-  video.loop = false
-  video.pause()
-
   try {
-    const duration = video.duration
-    const frameCount = Math.max(1, Math.round(duration * fps))
     const frameMicros = Math.round(1e6 / fps)
     const keyEvery = Math.max(1, Math.round(fps * 2))
 
     for (let i = 0; i < frameCount; i++) {
       if (encoderError) throw encoderError
-      await seekTo(video, Math.min(i / fps, Math.max(0, duration - 1e-3)))
-      renderer.uploadFrame(video)
-      renderer.render(pickAt(frameCount > 1 ? i / (frameCount - 1) : 0))
+      await renderFrame(i)
       const frame = new VideoFrame(renderer.canvas, {
         timestamp: i * frameMicros,
         duration: frameMicros,
@@ -124,6 +177,5 @@ async function exportMP4WebCodecs(
     return new Blob([muxer.target.buffer], { type: 'video/mp4' })
   } finally {
     encoder.close()
-    video.loop = wasLooping
   }
 }

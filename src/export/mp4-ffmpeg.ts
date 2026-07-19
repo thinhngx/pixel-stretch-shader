@@ -3,39 +3,28 @@ import { fetchFile } from '@ffmpeg/util'
 import coreURL from '@ffmpeg/core?url'
 import wasmURL from '@ffmpeg/core/wasm?url'
 import type { Renderer } from '../renderer'
-import { seekTo, type PickAt, type VideoExportOptions } from './webm'
+import type { FrameLoop } from './mp4'
 
 // Frame extraction is 0..N% of the progress bar, x264 encode the rest.
 const EXTRACT_SHARE = 0.7
 
 /**
- * .mp4 export fallback for browsers without a usable WebCodecs AVC encoder:
- * render each frame offline through the shader, hand the PNG frames to
- * ffmpeg.wasm (libx264). Slower and memory-hungrier than WebCodecs, but
- * dependency-light for the caller — everything here is lazily loaded.
+ * .mp4 encode fallback for browsers without a usable WebCodecs AVC encoder:
+ * run the frame loop, hand the PNG frames to ffmpeg.wasm (libx264). Slower
+ * and memory-hungrier than WebCodecs, but dependency-light for the caller —
+ * everything here is lazily loaded.
  */
-export async function exportMP4Ffmpeg(
+export async function encodeMP4Ffmpeg(
   renderer: Renderer,
-  video: HTMLVideoElement,
-  pickAt: PickAt,
-  { fps, onProgress }: VideoExportOptions,
+  { fps, frameCount, renderFrame, onProgress }: FrameLoop,
 ): Promise<Blob> {
   const ffmpeg = new FFmpeg()
   const loaded = await ffmpeg.load({ coreURL, wasmURL })
   if (!loaded) throw new Error('Failed to load ffmpeg.wasm.')
 
-  const wasLooping = video.loop
-  video.loop = false
-  video.pause()
-
   try {
-    const duration = video.duration
-    const frameCount = Math.max(1, Math.round(duration * fps))
-
     for (let i = 0; i < frameCount; i++) {
-      await seekTo(video, Math.min(i / fps, Math.max(0, duration - 1e-3)))
-      renderer.uploadFrame(video)
-      renderer.render(pickAt(frameCount > 1 ? i / (frameCount - 1) : 0))
+      await renderFrame(i)
       const blob = await new Promise<Blob>((resolve, reject) => {
         renderer.canvas.toBlob(
           (b) => (b ? resolve(b) : reject(new Error('Frame encode failed.'))),
@@ -64,7 +53,6 @@ export async function exportMP4Ffmpeg(
     onProgress(1)
     return new Blob([(data as Uint8Array).slice().buffer], { type: 'video/mp4' })
   } finally {
-    video.loop = wasLooping
     ffmpeg.terminate()
   }
 }

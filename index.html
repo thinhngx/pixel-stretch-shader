@@ -38,11 +38,47 @@
             </div>
           </section>
 
-          <section class="control">
+          <section class="control" id="pickControl">
             <label for="pick"><span id="pickLabel">Column</span> <output id="pickValue">0.500</output></label>
             <div class="slider-row">
               <input type="range" id="pick" min="0" max="1" step="0.001" value="0.5" disabled />
               <button type="button" id="resetPick" class="ghost" title="Reset to center (0.5)" disabled>Reset</button>
+            </div>
+          </section>
+
+          <section class="control" id="animateControl" hidden>
+            <label>Animate</label>
+            <div class="segmented" id="animateGroup" role="radiogroup">
+              <label><input type="radio" name="animate" value="off" checked /><span>Off</span></label>
+              <label><input type="radio" name="animate" value="on" /><span>On</span></label>
+            </div>
+            <div class="anim-panel" id="animatePanel" hidden>
+              <div class="subcontrol">
+                <label for="animStart"><span id="animStartLabel">Start column</span> <output id="animStartValue">0.000</output></label>
+                <input type="range" id="animStart" min="0" max="1" step="0.001" value="0" />
+              </div>
+              <div class="subcontrol">
+                <label for="animEnd"><span id="animEndLabel">End column</span> <output id="animEndValue">1.000</output></label>
+                <input type="range" id="animEnd" min="0" max="1" step="0.001" value="1" />
+              </div>
+              <div class="subcontrol">
+                <label for="animDuration">Duration <output id="animDurationValue">2.0s</output></label>
+                <input type="range" id="animDuration" min="0.25" max="10" step="0.25" value="2" />
+              </div>
+              <div class="subcontrol">
+                <label for="animEasing">Easing</label>
+                <select id="animEasing">
+                  <option value="linear">linear</option>
+                  <option value="ease-in">ease-in</option>
+                  <option value="ease-out">ease-out</option>
+                  <option value="ease-in-out" selected>ease-in-out</option>
+                  <option value="ease-out-in">ease-out-in</option>
+                </select>
+              </div>
+              <div class="anim-actions">
+                <button type="button" id="animPlayPause">Pause</button>
+                <button type="button" id="resetAnim" class="ghost" title="Reset to full sweep (0 → 1)">Reset</button>
+              </div>
             </div>
           </section>
 

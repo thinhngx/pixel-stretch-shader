@@ -96,6 +96,58 @@ export async function exportWebM(
   }
 }
 
+/**
+ * Export an animated pick sweep over a STILL image as .webm. MediaRecorder
+ * timestamps in wall-clock time, so this runs the sweep in realtime for
+ * durationSec, pushing an explicitly rendered frame per rAF tick.
+ */
+export async function exportAnimationWebM(
+  renderer: Renderer,
+  pickAt: PickAt,
+  { durationSec, fps, onProgress }: VideoExportOptions & { durationSec: number },
+): Promise<Blob> {
+  const mimeType = MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m))
+  if (!mimeType) throw new Error('This browser cannot record .webm — try .mp4 instead.')
+
+  const stream = renderer.canvas.captureStream(0)
+  const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack
+  const { width, height } = renderer.canvas
+  const recorder = new MediaRecorder(stream, {
+    mimeType,
+    videoBitsPerSecond: estimateBitrate(width, height, fps),
+  })
+  const chunks: Blob[] = []
+  recorder.ondataavailable = (e) => {
+    if (e.data.size) chunks.push(e.data)
+  }
+  const stopped = new Promise<void>((resolve, reject) => {
+    recorder.onstop = () => resolve()
+    recorder.onerror = () => reject(new Error('MediaRecorder failed.'))
+  })
+
+  renderer.render(pickAt(0))
+  recorder.start()
+  track.requestFrame()
+
+  await new Promise<void>((resolve) => {
+    const t0 = performance.now()
+    const tick = (now: number): void => {
+      const t = Math.min(1, (now - t0) / (durationSec * 1000))
+      renderer.render(pickAt(t))
+      track.requestFrame()
+      onProgress(t)
+      if (t >= 1) resolve()
+      else requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  })
+
+  recorder.stop()
+  await stopped
+  onProgress(1)
+  return new Blob(chunks, { type: 'video/webm' })
+}
+
 /** ~0.15 bits per pixel per frame, clamped to a sane range. */
 export function estimateBitrate(width: number, height: number, fps: number): number {
   return Math.round(Math.min(50e6, Math.max(1e6, width * height * fps * 0.15)))
