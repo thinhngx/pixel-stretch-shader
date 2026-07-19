@@ -5,8 +5,8 @@ import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './med
 import { exportStill, type StillFormat } from './export/stills'
 import { EASINGS, lerp, type EasingName } from './easing'
 import { chooseDestination, saveToDestination, SAVE_TYPES } from './export/save'
-import { exportWebM } from './export/webm'
-import { exportMP4 } from './export/mp4'
+import { exportAnimationWebM, exportWebM } from './export/webm'
+import { exportAnimationMP4, exportMP4, type MP4Engine } from './export/mp4'
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -54,6 +54,7 @@ fileInput.accept = ACCEPT
 const renderer = new Renderer(canvas)
 
 const DEFAULT_PICK = 0.5
+const ANIM_FPS = 30
 
 let media: Media | null = null
 let sourceBaseName = 'pixel-stretch'
@@ -363,28 +364,34 @@ async function onExport(): Promise<void> {
       const blob = await exportStill(renderer, format as StillFormat)
       await saveToDestination(destination, blob)
       setStatus(`Saved ${destination.filename}`)
-    } else if (media.kind === 'video') {
-      const fps = fpsEstimator?.fps ?? 30
+    } else if (format === 'mp4' || format === 'webm') {
+      const isAnimation = media.kind === 'image' && animate
+      if (media.kind === 'image' && !isAnimation) throw new Error(`Unsupported format: ${format}`)
+      const fps = isAnimation ? ANIM_FPS : (fpsEstimator?.fps ?? 30)
       progress.hidden = false
       onProgress(0)
       setStatus(`Rendering .${format} at ${fps} fps…`)
       const opts = { fps, onProgress }
-      // v2: constant pick over the whole clip. v3 swaps this callback for
-      // lerp(start, end, ease(t)) — see src/easing.ts.
-      const pickAt = (): number => pick
+      const onEngine = (engine: MP4Engine): void =>
+        setStatus(
+          engine === 'webcodecs'
+            ? `Rendering .mp4 at ${fps} fps (WebCodecs)…`
+            : `Rendering .mp4 at ${fps} fps (ffmpeg.wasm fallback — slower)…`,
+        )
       let blob: Blob
-      if (format === 'webm') {
-        blob = await exportWebM(renderer, media.element, pickAt, opts)
-      } else if (format === 'mp4') {
-        blob = await exportMP4(renderer, media.element, pickAt, {
-          ...opts,
-          onEngine: (engine) =>
-            setStatus(
-              engine === 'webcodecs'
-                ? `Rendering .mp4 at ${fps} fps (WebCodecs)…`
-                : `Rendering .mp4 at ${fps} fps (ffmpeg.wasm fallback — slower)…`,
-            ),
-        })
+      if (isAnimation) {
+        // Animated sweep over a still image: pick(t) = lerp(start, end, ease(t)).
+        const animOpts = { ...opts, durationSec: animDuration }
+        blob =
+          format === 'webm'
+            ? await exportAnimationWebM(renderer, animPickAt, animOpts)
+            : await exportAnimationMP4(renderer, animPickAt, { ...animOpts, onEngine })
+      } else if (media.kind === 'video') {
+        const pickAt = (): number => pick
+        blob =
+          format === 'webm'
+            ? await exportWebM(renderer, media.element, pickAt, opts)
+            : await exportMP4(renderer, media.element, pickAt, { ...opts, onEngine })
       } else {
         throw new Error(`Unsupported format: ${format}`)
       }
