@@ -162,6 +162,18 @@ input[type='range'] {
   accent-color: var(--accent);
 }
 
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+button.ghost {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: transparent;
+}
+
 .segmented {
   display: flex;
   border: 1px solid var(--border);

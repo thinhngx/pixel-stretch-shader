@@ -21,6 +21,7 @@ const directionGroup = $<HTMLDivElement>('directionGroup')
 const pickSlider = $<HTMLInputElement>('pick')
 const pickLabel = $<HTMLSpanElement>('pickLabel')
 const pickValueOut = $<HTMLOutputElement>('pickValue')
+const resetPickBtn = $<HTMLButtonElement>('resetPick')
 const scaleGroup = $<HTMLDivElement>('scaleGroup')
 const sizeInfo = $<HTMLDivElement>('sizeInfo')
 const formatSelect = $<HTMLSelectElement>('format')
@@ -33,9 +34,11 @@ fileInput.accept = ACCEPT
 
 const renderer = new Renderer(canvas)
 
+const DEFAULT_PICK = 0.5
+
 let media: Media | null = null
 let direction: StretchDirection = 'horizontal'
-let pick = 0.5
+let pick = DEFAULT_PICK
 let scale = 1
 let exporting = false
 let fpsEstimator: FpsEstimator | null = null
@@ -54,6 +57,7 @@ const directionInputs = (): HTMLInputElement[] => radioInputs(directionGroup, 'd
 
 function setControlsEnabled(enabled: boolean): void {
   pickSlider.disabled = !enabled
+  resetPickBtn.disabled = !enabled
   formatSelect.disabled = !enabled
   exportBtn.disabled = !enabled
   uploadBtn.disabled = !enabled && exporting
@@ -172,11 +176,16 @@ directionGroup.addEventListener('change', () => {
 
 // --- pick slider (column / row) --------------------------------------------
 
-pickSlider.addEventListener('input', () => {
-  pick = pickSlider.valueAsNumber
+function setPick(value: number): void {
+  pick = Math.min(1, Math.max(0, value))
+  pickSlider.value = String(pick)
   pickValueOut.textContent = pick.toFixed(3)
   renderFrame()
-})
+}
+
+pickSlider.addEventListener('input', () => setPick(pickSlider.valueAsNumber))
+
+resetPickBtn.addEventListener('click', () => setPick(DEFAULT_PICK))
 
 // --- preview scale ---------------------------------------------------------
 
