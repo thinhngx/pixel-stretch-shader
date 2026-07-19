@@ -1,4 +1,6 @@
-import { Renderer } from './renderer'
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
+import { Renderer, type StretchDirection } from './renderer'
 import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './media'
 import { downloadBlob, exportStill, type StillFormat } from './export/stills'
 import { exportWebM } from './export/webm'
@@ -17,8 +19,11 @@ const fileInput = $<HTMLInputElement>('fileInput')
 const uploadBtn = $<HTMLButtonElement>('uploadBtn')
 const browseBtn = $<HTMLButtonElement>('browseBtn')
 const mediaInfo = $<HTMLDivElement>('mediaInfo')
-const pickXSlider = $<HTMLInputElement>('pickX')
-const pickXValue = $<HTMLOutputElement>('pickXValue')
+const directionGroup = $<HTMLDivElement>('directionGroup')
+const pickSlider = $<HTMLInputElement>('pick')
+const pickLabel = $<HTMLSpanElement>('pickLabel')
+const pickValueOut = $<HTMLOutputElement>('pickValue')
+const resetPickBtn = $<HTMLButtonElement>('resetPick')
 const scaleGroup = $<HTMLDivElement>('scaleGroup')
 const sizeInfo = $<HTMLDivElement>('sizeInfo')
 const formatSelect = $<HTMLSelectElement>('format')
@@ -31,8 +36,11 @@ fileInput.accept = ACCEPT
 
 const renderer = new Renderer(canvas)
 
+const DEFAULT_PICK = 0.5
+
 let media: Media | null = null
-let pickX = 0.5
+let direction: StretchDirection = 'horizontal'
+let pick = DEFAULT_PICK
 let scale = 1
 let exporting = false
 let fpsEstimator: FpsEstimator | null = null
@@ -42,16 +50,20 @@ function setStatus(message: string): void {
   statusEl.textContent = message
 }
 
-function scaleInputs(): HTMLInputElement[] {
-  return [...scaleGroup.querySelectorAll<HTMLInputElement>('input[name="scale"]')]
+function radioInputs(group: HTMLElement, name: string): HTMLInputElement[] {
+  return [...group.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)]
 }
 
+const scaleInputs = (): HTMLInputElement[] => radioInputs(scaleGroup, 'scale')
+const directionInputs = (): HTMLInputElement[] => radioInputs(directionGroup, 'direction')
+
 function setControlsEnabled(enabled: boolean): void {
-  pickXSlider.disabled = !enabled
+  pickSlider.disabled = !enabled
+  resetPickBtn.disabled = !enabled
   formatSelect.disabled = !enabled
   exportBtn.disabled = !enabled
   uploadBtn.disabled = !enabled && exporting
-  for (const input of scaleInputs()) input.disabled = !enabled
+  for (const input of [...scaleInputs(), ...directionInputs()]) input.disabled = !enabled
 }
 
 function applyScale(): void {
@@ -83,7 +95,7 @@ function populateFormats(kind: Media['kind']): void {
 
 function renderFrame(): void {
   if (!renderer.hasSource) return
-  renderer.render(pickX)
+  renderer.render(pick)
 }
 
 // Realtime preview loop for video: re-upload the current frame each tick.
@@ -93,7 +105,7 @@ function startPreviewLoop(video: HTMLVideoElement): void {
     rafId = requestAnimationFrame(tick)
     if (exporting || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return
     renderer.uploadFrame(video)
-    renderer.render(pickX)
+    renderer.render(pick)
   }
   rafId = requestAnimationFrame(tick)
 }
@@ -153,13 +165,29 @@ stage.addEventListener('drop', (e) => {
   if (file) void onFile(file)
 })
 
-// --- column slider ---------------------------------------------------------
+// --- direction toggle ------------------------------------------------------
 
-pickXSlider.addEventListener('input', () => {
-  pickX = pickXSlider.valueAsNumber
-  pickXValue.textContent = pickX.toFixed(3)
+directionGroup.addEventListener('change', () => {
+  const checked = directionInputs().find((input) => input.checked)
+  if (!checked) return
+  direction = checked.value as StretchDirection
+  pickLabel.textContent = direction === 'vertical' ? 'Row' : 'Column'
+  renderer.setDirection(direction)
   renderFrame()
 })
+
+// --- pick slider (column / row) --------------------------------------------
+
+function setPick(value: number): void {
+  pick = Math.min(1, Math.max(0, value))
+  pickSlider.value = String(pick)
+  pickValueOut.textContent = pick.toFixed(3)
+  renderFrame()
+}
+
+pickSlider.addEventListener('input', () => setPick(pickSlider.valueAsNumber))
+
+resetPickBtn.addEventListener('click', () => setPick(DEFAULT_PICK))
 
 // --- preview scale ---------------------------------------------------------
 
@@ -171,7 +199,7 @@ scaleGroup.addEventListener('change', () => {
 })
 
 // --- export ----------------------------------------------------------------
-// Export always follows the current preview settings: pickX + scale + format.
+// Export always follows the current preview settings: pick + scale + format.
 
 exportBtn.addEventListener('click', () => void onExport())
 
@@ -198,11 +226,14 @@ async function onExport(): Promise<void> {
       onProgress(0)
       setStatus(`Rendering .${format} at ${fps} fps…`)
       const opts = { fps, onProgress }
+      // v2: constant pick over the whole clip. v3 swaps this callback for
+      // lerp(start, end, ease(t)) — see src/easing.ts.
+      const pickAt = (): number => pick
       let blob: Blob
       if (format === 'webm') {
-        blob = await exportWebM(renderer, media.element, pickX, opts)
+        blob = await exportWebM(renderer, media.element, pickAt, opts)
       } else if (format === 'mp4') {
-        blob = await exportMP4(renderer, media.element, pickX, {
+        blob = await exportMP4(renderer, media.element, pickAt, {
           ...opts,
           onEngine: (engine) =>
             setStatus(

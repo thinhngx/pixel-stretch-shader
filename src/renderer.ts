@@ -1,8 +1,6 @@
 import fragSource from './shaders/pixel-stretch.frag.glsl?raw'
 
-// Direction is a host-side parameter so v2 can add 'vertical' without a
-// rewrite (the shader gains a uniform/branch; this API doesn't change shape).
-export type StretchDirection = 'horizontal'
+export type StretchDirection = 'horizontal' | 'vertical'
 
 const VERT_SOURCE = `#version 300 es
 layout(location = 0) in vec2 a_pos;
@@ -25,10 +23,11 @@ export interface RenderSize {
 
 export class Renderer {
   readonly canvas: HTMLCanvasElement
-  readonly direction: StretchDirection = 'horizontal'
 
   private gl: WebGL2RenderingContext
-  private uPickX: WebGLUniformLocation
+  private direction: StretchDirection = 'horizontal'
+  private uPick: WebGLUniformLocation
+  private uVertical: WebGLUniformLocation
   private texture: WebGLTexture
   private sourceWidth = 0
   private sourceHeight = 0
@@ -47,9 +46,12 @@ export class Renderer {
 
     const program = createProgram(gl, VERT_SOURCE, fragSource)
     gl.useProgram(program)
-    const uPickX = gl.getUniformLocation(program, 'u_pickX')
-    if (!uPickX) throw new Error('u_pickX uniform not found')
-    this.uPickX = uPickX
+    const uPick = gl.getUniformLocation(program, 'u_pick')
+    const uVertical = gl.getUniformLocation(program, 'u_vertical')
+    if (!uPick || !uVertical) throw new Error('shader uniforms not found')
+    this.uPick = uPick
+    this.uVertical = uVertical
+    gl.uniform1i(uVertical, 0)
     gl.uniform1i(gl.getUniformLocation(program, 'u_media'), 0)
 
     // Full-screen quad (triangle strip).
@@ -118,11 +120,25 @@ export class Renderer {
     return { width: w, height: h, clamped }
   }
 
-  /** Draw the stretch effect for the current frame at the current size. */
-  render(pickX: number): void {
+  /** Set the smear direction; sticky until changed (default horizontal). */
+  setDirection(direction: StretchDirection): void {
+    if (direction === this.direction) return
+    this.direction = direction
+    this.gl.uniform1i(this.uVertical, direction === 'vertical' ? 1 : 0)
+  }
+
+  /**
+   * Draw the stretch effect for the current frame at the current size.
+   * `pick` is the normalized coordinate in UI orientation: column from the
+   * LEFT in horizontal mode, row from the TOP in vertical mode. Textures are
+   * uploaded Y-flipped (GL convention, t = 0 at image bottom), so the row is
+   * mirrored before it reaches the u_pick uniform — see the shader header.
+   */
+  render(pick: number): void {
     const gl = this.gl
+    const clamped = Math.min(1, Math.max(0, pick))
     gl.viewport(0, 0, this.canvas.width, this.canvas.height)
-    gl.uniform1f(this.uPickX, Math.min(1, Math.max(0, pickX)))
+    gl.uniform1f(this.uPick, this.direction === 'vertical' ? 1 - clamped : clamped)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
 }

@@ -10,7 +10,7 @@
     <div id="app">
       <header>
         <h1>Pixel Stretch</h1>
-        <span class="tagline">pick a column, smear it across the frame</span>
+        <span class="tagline">pick a line, smear it across the frame</span>
       </header>
       <main>
         <div class="stage" id="stage">
@@ -31,8 +31,19 @@
           </section>
 
           <section class="control">
-            <label for="pickX">Column <output id="pickXValue">0.500</output></label>
-            <input type="range" id="pickX" min="0" max="1" step="0.001" value="0.5" disabled />
+            <label>Direction</label>
+            <div class="segmented" id="directionGroup" role="radiogroup">
+              <label><input type="radio" name="direction" value="horizontal" checked disabled /><span>Horizontal</span></label>
+              <label><input type="radio" name="direction" value="vertical" disabled /><span>Vertical</span></label>
+            </div>
+          </section>
+
+          <section class="control">
+            <label for="pick"><span id="pickLabel">Column</span> <output id="pickValue">0.500</output></label>
+            <div class="slider-row">
+              <input type="range" id="pick" min="0" max="1" step="0.001" value="0.5" disabled />
+              <button type="button" id="resetPick" class="ghost" title="Reset to center (0.5)" disabled>Reset</button>
+            </div>
           </section>
 
           <section class="control">
