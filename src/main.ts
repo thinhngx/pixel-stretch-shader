@@ -3,7 +3,7 @@ import '@fontsource-variable/geist-mono'
 import { Renderer, type StretchDirection } from './renderer'
 import { ACCEPT, FpsEstimator, loadMedia, releaseMedia, type Media } from './media'
 import { exportStill, type StillFormat } from './export/stills'
-import { EASINGS, lerp, type EasingName } from './easing'
+import { EASINGS, lerp, pingpong, type EasingName } from './easing'
 import { chooseDestination, saveToDestination, SAVE_TYPES } from './export/save'
 import { exportAnimationWebM, exportWebM } from './export/webm'
 import { exportAnimationMP4, exportMP4, type MP4Engine } from './export/mp4'
@@ -138,7 +138,10 @@ function populateFormats(kind: Media['kind']): void {
   formatSelect.replaceChildren(...list.map(({ value, label }) => new Option(label, value)))
 }
 
-const animPickAt = (t: number): number => lerp(animStart, animEnd, EASINGS[animEasing](t))
+// Seamless closed loop: start -> end over the first half of the Duration,
+// end -> back to start over the second half, easing applied to each leg.
+// Shared by the live preview and both video export paths.
+const animPickAt = (t: number): number => lerp(animStart, animEnd, EASINGS[animEasing](pingpong(t)))
 
 function renderFrame(): void {
   if (!renderer.hasSource) return

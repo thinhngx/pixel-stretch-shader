@@ -66,8 +66,10 @@ export async function exportMP4(
 
 /**
  * Export an animated pick sweep over a STILL image as .mp4: frameCount
- * frames of pick = pickAt(t), t = i/(frameCount-1). No seeking, no frame
- * uploads — the source texture never changes, only u_pick.
+ * frames of pick = pickAt(t), t = i/frameCount — the half-open range [0, 1),
+ * so a there-and-back sweep repeats seamlessly (the closing frame at t = 1
+ * would duplicate frame 0). No seeking, no frame uploads — the source
+ * texture never changes, only u_pick.
  */
 export async function exportAnimationMP4(
   renderer: Renderer,
@@ -83,7 +85,7 @@ export async function exportAnimationMP4(
     fps,
     frameCount,
     onProgress,
-    renderFrame: (i) => renderer.render(pickAt(i / (frameCount - 1))),
+    renderFrame: (i) => renderer.render(pickAt(i / frameCount)),
   })
 }
 

@@ -132,12 +132,18 @@ export async function exportAnimationWebM(
   await new Promise<void>((resolve) => {
     const t0 = performance.now()
     const tick = (now: number): void => {
-      const t = Math.min(1, (now - t0) / (durationSec * 1000))
+      const t = (now - t0) / (durationSec * 1000)
+      // Stop before t = 1: the closing frame equals frame 0 on a
+      // there-and-back sweep, and skipping it keeps the loop seamless.
+      if (t >= 1) {
+        onProgress(1)
+        resolve()
+        return
+      }
       renderer.render(pickAt(t))
       track.requestFrame()
       onProgress(t)
-      if (t >= 1) resolve()
-      else requestAnimationFrame(tick)
+      requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)
   })
