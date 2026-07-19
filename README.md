@@ -26,7 +26,7 @@ npm run typecheck  # tsc --noEmit
 1. **Upload** an image (`png/jpg/webp`) or video (`mp4/webm`) — picker or drag-and-drop. Type and output dimensions are auto-detected.
 2. **Direction toggle** switches between horizontal (column) and vertical (row) stretch; horizontal is the default.
 3. **Pick slider** selects the source column or row (`0..1`, default center), updating the preview live (videos render in realtime through the shader). **Reset** snaps it back to center instantly.
-4. **Animate** (image input only, off by default) sweeps the pick from a **Start** to an **End** coordinate over a chosen **Duration** (0.25–10s, default 2s) with a chosen **Easing** (linear, ease-in, ease-out, ease-in-out, ease-out-in), looping in the preview with Play/Pause. Reset restores the full 0 → 1 sweep. Exporting mp4/webm renders the sweep at 30fps (`frameCount = duration × 30`); png/webp capture the currently previewed frame.
+4. **Animate** (image input only, off by default) sweeps the pick from a **Start** to an **End** coordinate **and back** — a seamless there-and-back loop — over a chosen **Duration** (the full round trip; 0.25–10s, default 2s) with a chosen **Easing** (linear, ease-in, ease-out, ease-in-out, ease-out-in) applied to each leg, looping in the preview with Play/Pause. Reset restores the full 0 → 1 sweep. Exporting mp4/webm renders the loop at 30fps (`frameCount = duration × 30`, frames over `t ∈ [0,1)` so the clip repeats without a duplicated seam frame); png/webp capture the currently previewed frame.
 5. **Preview scale** `1x/2x/3x` multiplies the render-target resolution (supersampled output, not a viewport zoom), clamped to safe GPU/canvas limits and even dimensions.
 6. **Export** follows the current preview settings exactly (direction + pick/sweep + scale + chosen format) and opens a **save-destination dialog** (File System Access API; suggested name `<source>-stretch.<ext>`; dismissing aborts silently). Firefox/Safari fall back to a regular download:
 
@@ -53,7 +53,7 @@ The effect lives in [`src/shaders/pixel-stretch.frag.glsl`](src/shaders/pixel-st
 
 ## Animation architecture (v3)
 
-The animation is **host-side only** — it drives the existing `u_pick` uniform once per frame; the fragment shader is unchanged, so native portability is unaffected (a native port animates `u_pick` the same way: `lerp(start, end, ease(t))`).
+The animation is **host-side only** — it drives the existing `u_pick` uniform once per frame; the fragment shader is unchanged, so native portability is unaffected (a native port animates `u_pick` the same way: `lerp(start, end, ease(pingpong(t)))`, where `pingpong` is the there-and-back triangle wave in `src/easing.ts`).
 
 - `src/easing.ts`: the five named curves as pure `t -> t'` functions plus `lerp`.
 - All video export paths run through a `pickAt(t)` callback over normalized output time; MP4 encoding shares one offline `FrameLoop` (`renderFrame(i)`) between video input (seek + re-upload) and image animation (re-render only), on both the WebCodecs and ffmpeg.wasm engines.

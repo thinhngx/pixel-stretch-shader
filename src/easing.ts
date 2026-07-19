@@ -15,3 +15,11 @@ export const EASINGS: Record<EasingName, Easing> = {
 }
 
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t
+
+/**
+ * There-and-back triangle wave over one loop: 0 -> 1 across the first half
+ * of t, back 1 -> 0 across the second half. Feeding the result through an
+ * easing curve eases each leg symmetrically, so the sweep decelerates into
+ * both the far end and the return to start — a seamless closed loop.
+ */
+export const pingpong = (t: number): number => (t < 0.5 ? t * 2 : (1 - t) * 2)
